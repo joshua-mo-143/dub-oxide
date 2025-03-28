@@ -8,8 +8,11 @@ use num::{NumCast, ToPrimitive};
 
 pub trait AudioSplitter {
     type ByteSize: num::Num + Sized + ToPrimitive + Clone;
-    fn split_by_time_segment(&mut self, duration: Duration) -> Vec<Vec<Self::ByteSize>>;
-    fn split_by_size_limit(&mut self, byte_limit: usize) -> Vec<Vec<Self::ByteSize>>;
+    fn split_by_time_segment(
+        &mut self,
+        duration: Duration,
+    ) -> Result<Vec<Vec<Self::ByteSize>>, TODO>;
+    fn split_by_size_limit(&mut self, byte_limit: usize) -> Result<Vec<Vec<Self::ByteSize>>, TODO>;
     fn get_bytes_per_ms(&self) -> u32;
 
     fn get_frame_size_from_duration(&self, duration: Duration) -> usize {
