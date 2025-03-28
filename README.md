@@ -1,6 +1,11 @@
 ## DubOxide: Easy audio splitting that actually makes sense.
 A crate made for splitting whatever audio you want (assuming supported format) into chunks based on either time or byte array size.
 
+## Installation
+```bash
+cargo add dub-oxide --git https://github.com/joshua-mo-143/dub-oxide
+```
+
 ## Example usage
 ```rust
 use rustdub::{WavSplitter, AudioSplitter};
