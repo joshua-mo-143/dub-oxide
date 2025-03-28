@@ -3,7 +3,7 @@ A crate made for splitting whatever audio you want (assuming supported format) i
 
 ## Installation
 ```bash
-cargo add dub-oxide --git https://github.com/joshua-mo-143/dub-oxide
+cargo add dub-oxide --git https://github.com/joshua-mo-143/dub-oxide.git
 ```
 
 ## Example usage
