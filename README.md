@@ -8,7 +8,7 @@ cargo add dub-oxide --git https://github.com/joshua-mo-143/dub-oxide.git
 
 ## Example usage
 ```rust
-use rustdub::{WavSplitter, AudioSplitter};
+use dub_oxide::{WavSplitter, AudioSplitter};
 
 fn main() {
     let mut wav_splitter = WavSplitter::from_file("input.wav");
