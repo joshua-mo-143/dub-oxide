@@ -3,18 +3,21 @@ pub mod formats;
 pub mod opts;
 pub mod result;
 
-use std::time::Duration;
-
 use error::Error;
 pub use formats::wav::WavSplitter;
-use hound::{Sample, WavSpec};
-use num::{NumCast, ToPrimitive};
+use hound::WavSpec;
+use num::ToPrimitive;
 use opts::SplitOpts;
 pub use result::AudioChunk;
+use result::SplitResult;
 
 pub trait AudioSplitter {
     type ByteSize: num::Num + Sized + ToPrimitive + Clone;
-    fn split_audio(&mut self, opts: SplitOpts) -> Result<Vec<AudioChunk<Self::ByteSize>>, Error>;
+    type CodecParams: BytesPerMillisecond;
+    fn split_audio(
+        &mut self,
+        opts: SplitOpts,
+    ) -> Result<SplitResult<Self::ByteSize, Self::CodecParams>, Error>;
 }
 
 pub trait BytesPerMillisecond {

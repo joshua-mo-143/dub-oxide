@@ -8,6 +8,7 @@ use crate::{
     BytesPerMillisecond,
     error::Error,
     formats::common::{bytes_to_timestamp, find_silent_position},
+    result::SplitResult,
 };
 
 use hound::{WavReader, WavSpec};
@@ -55,14 +56,14 @@ where
             .samples::<i16>()
             .filter_map(|x| x.ok())
             .collect();
+        let samples_len = samples.len() as u32;
 
-        if samples.len() as u32 != self.reader.len() {
+        if samples_len != self.reader.len() {
             return Err(Error::inconsistent_byte_length(
                 samples.len(),
                 self.reader.len() as usize,
             ));
         }
-        let samples_len = samples.len();
 
         #[cfg(feature = "tracing")]
         tracing::trace!("{samples_len} samples loaded.");
@@ -82,8 +83,12 @@ where
     R: Read + Seek,
 {
     type ByteSize = i16;
+    type CodecParams = WavSpec;
 
-    fn split_audio(&mut self, opts: SplitOpts) -> Result<Vec<AudioChunk<Self::ByteSize>>, Error> {
+    fn split_audio(
+        &mut self,
+        opts: SplitOpts,
+    ) -> Result<SplitResult<Self::ByteSize, Self::CodecParams>, Error> {
         let byte_limit = opts.frame_size();
         let bytes_per_ms = self.reader.spec().bytes_per_ms() as usize;
 
@@ -108,7 +113,7 @@ where
                     AudioChunk::new(&bytes[offset..bytes.len()], timestamp_start, timestamp_end);
 
                 bigvec.push(audio_chunk);
-                offset = bytes.len();
+
                 break;
             }
 
@@ -153,6 +158,7 @@ where
             offset = pos;
         }
 
-        Ok(bigvec)
+        let split_result = SplitResult::new(bigvec, self.reader.spec());
+        Ok(split_result)
     }
 }
