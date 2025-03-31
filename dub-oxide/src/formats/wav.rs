@@ -1,29 +1,47 @@
 use std::{
-    io::{Cursor, Read, Seek},
+    fs::File,
+    io::{BufReader, Cursor, Read, Seek},
     path::Path,
-    time::Duration,
 };
 
-use hound::WavReader;
+use crate::{
+    BytesPerMillisecond,
+    error::Error,
+    formats::common::{bytes_to_timestamp, find_silent_position},
+};
 
-use crate::{AudioSplitter, TODO, find_silent_position};
-pub struct WavSplitter<R>(WavReader<R>);
+use hound::{WavReader, WavSpec};
 
-impl WavSplitter<std::io::BufReader<std::fs::File>> {
-    pub fn from_file_path<P>(path: P) -> Result<Self, TODO>
+use crate::{AudioChunk, AudioSplitter, SplitOpts};
+
+pub struct WavSplitter<R> {
+    reader: WavReader<R>,
+}
+
+impl WavSplitter<BufReader<File>> {
+    pub fn from_file_path<P>(path: P) -> Result<Self, Error>
     where
         P: AsRef<Path>,
     {
         let reader = WavReader::open(path)?;
 
-        Ok(Self(reader))
+        Ok(Self { reader })
+    }
+
+    pub fn codec(&self) -> WavSpec {
+        self.reader.spec()
     }
 }
 
 impl<'a> WavSplitter<Cursor<&'a [u8]>> {
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self, TODO> {
-        let res = WavReader::new(Cursor::new(bytes))?;
-        Ok(Self(res))
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self, Error> {
+        let reader = WavReader::new(Cursor::new(bytes))?;
+
+        Ok(Self { reader })
+    }
+
+    pub fn codec(&self) -> WavSpec {
+        self.reader.spec()
     }
 }
 
@@ -31,18 +49,29 @@ impl<R> WavSplitter<R>
 where
     R: Read + Seek,
 {
-    fn get_bytes(&mut self) -> Result<Vec<i16>, TODO> {
-        let bytes: Vec<i16> = self.0.samples::<i16>().filter_map(|x| x.ok()).collect();
+    fn get_bytes(&mut self) -> Result<Vec<i16>, Error> {
+        let samples: Vec<i16> = self
+            .reader
+            .samples::<i16>()
+            .filter_map(|x| x.ok())
+            .collect();
 
-        if bytes.len() as u32 != self.0.len() {
-            return Err("There was an encoding error".into());
+        if samples.len() as u32 != self.reader.len() {
+            return Err(Error::inconsistent_byte_length(
+                samples.len(),
+                self.reader.len() as usize,
+            ));
         }
+        let samples_len = samples.len();
 
-        Ok(bytes)
+        #[cfg(feature = "tracing")]
+        tracing::trace!("{samples_len} samples loaded.");
+
+        Ok(samples)
     }
 
-    pub fn reset(&mut self) -> Result<(), TODO> {
-        self.0.seek(0)?;
+    pub fn reset(&mut self) -> Result<(), Error> {
+        self.reader.seek(0)?;
 
         Ok(())
     }
@@ -54,13 +83,11 @@ where
 {
     type ByteSize = i16;
 
-    fn split_by_time_segment(
-        &mut self,
-        duration: Duration,
-    ) -> Result<Vec<Vec<Self::ByteSize>>, TODO> {
-        let byte_limit = self.get_frame_size_from_duration(duration);
+    fn split_audio(&mut self, opts: SplitOpts) -> Result<Vec<AudioChunk<Self::ByteSize>>, Error> {
+        let byte_limit = opts.frame_size();
+        let bytes_per_ms = self.reader.spec().bytes_per_ms() as usize;
 
-        let mut bigvec: Vec<Vec<Self::ByteSize>> = Vec::new();
+        let mut bigvec = Vec::new();
 
         let mut offset: usize = 0;
 
@@ -70,9 +97,19 @@ where
         tracing::trace!("Bytes length:{}", bytes.len());
 
         loop {
+            if offset >= bytes.len() {
+                break;
+            }
             if bytes[offset..bytes.len()].len() <= byte_limit {
-                bigvec.push(bytes[offset..bytes.len()].to_vec());
-                return Ok(bigvec);
+                let timestamp_start = bytes_to_timestamp(offset, bytes_per_ms);
+                let timestamp_end = bytes_to_timestamp(bytes.len(), bytes_per_ms);
+
+                let audio_chunk =
+                    AudioChunk::new(&bytes[offset..bytes.len()], timestamp_start, timestamp_end);
+
+                bigvec.push(audio_chunk);
+                offset = bytes.len();
+                break;
             }
 
             let end_pos = if offset + byte_limit >= bytes.len() {
@@ -81,84 +118,41 @@ where
                 offset + byte_limit
             };
 
-            #[cfg(feature = "tracing")]
-            tracing::trace!(
-                "Searching for a chunk between position {offset} and position {end_pos}"
-            );
+            let pos = if let Some(threshold) = opts.silence_threshold() {
+                #[cfg(feature = "tracing")]
+                tracing::trace!(
+                    "Searching for a chunk between position {offset} and position {end_pos}"
+                );
 
-            let Some(pos) = find_silent_position(&bytes[offset..end_pos], self) else {
-                return Err("Could not find an area of silence.".into());
-            };
+                let pos = if let Some(pos) = find_silent_position::<_, Self>(
+                    &bytes[offset..end_pos],
+                    bytes_per_ms * 50,
+                    threshold,
+                ) {
+                    pos + offset
+                } else {
+                    #[cfg(feature = "tracing")]
+                    tracing::info!("Could not find chunk between X and X");
 
-            let pos = pos + offset;
-
-            #[cfg(feature = "tracing")]
-            tracing::trace!("Position: {pos}");
-
-            if pos >= bytes.len() {
-                break;
-            }
-
-            bigvec.push(bytes[offset..pos].to_vec());
-            offset = pos;
-        }
-
-        Ok(bigvec)
-    }
-
-    fn split_by_size_limit(&mut self, byte_limit: usize) -> Result<Vec<Vec<Self::ByteSize>>, TODO> {
-        let mut bigvec: Vec<Vec<Self::ByteSize>> = Vec::new();
-
-        let mut offset: usize = 0;
-
-        let bytes = self.get_bytes().unwrap();
-
-        #[cfg(feature = "tracing")]
-        tracing::trace!("Bytes length:{}", bytes.len());
-
-        loop {
-            if bytes[offset..bytes.len()].len() <= byte_limit {
-                bigvec.push(bytes[offset..bytes.len()].to_vec());
-                return Ok(bigvec);
-            }
-
-            let end_pos = if offset + byte_limit >= bytes.len() {
-                bytes.len()
+                    offset + byte_limit
+                };
+                pos
             } else {
                 offset + byte_limit
             };
 
-            #[cfg(feature = "tracing")]
-            tracing::trace!(
-                "Searching for a chunk between position {offset} and position {end_pos}"
-            );
+            let timestamp_start = bytes_to_timestamp(offset, bytes_per_ms);
+            let timestamp_end = bytes_to_timestamp(pos, bytes_per_ms);
 
-            let Some(pos) = find_silent_position(&bytes[offset..end_pos], self) else {
-                return Err("Could not find an area of silence.".into());
-            };
-
-            let pos = pos + offset;
+            let audiochunk = AudioChunk::new(&bytes[offset..pos], timestamp_start, timestamp_end);
 
             #[cfg(feature = "tracing")]
-            println!("{pos}");
+            tracing::debug!("Created chunk at timestamp {timestamp_start}ms to {timestamp_end}ms");
 
-            if pos >= bytes.len() {
-                break;
-            }
-
-            bigvec.push(bytes[offset..pos].to_vec());
+            bigvec.push(audiochunk);
             offset = pos;
         }
 
         Ok(bigvec)
-    }
-
-    fn get_bytes_per_ms(&self) -> u32 {
-        let spec = self.0.spec();
-        let sample_rate = spec.sample_rate as u32;
-        let channels = spec.channels as u32;
-
-        // Calculate bytes per millisecond
-        (sample_rate * channels) / 1000
     }
 }

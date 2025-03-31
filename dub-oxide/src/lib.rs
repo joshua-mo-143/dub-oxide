@@ -1,69 +1,32 @@
+pub mod error;
 pub mod formats;
+pub mod opts;
+pub mod result;
 
 use std::time::Duration;
 
+use error::Error;
 pub use formats::wav::WavSplitter;
-use hound::Sample;
+use hound::{Sample, WavSpec};
 use num::{NumCast, ToPrimitive};
+use opts::SplitOpts;
+pub use result::AudioChunk;
 
 pub trait AudioSplitter {
     type ByteSize: num::Num + Sized + ToPrimitive + Clone;
-    fn split_by_time_segment(
-        &mut self,
-        duration: Duration,
-    ) -> Result<Vec<Vec<Self::ByteSize>>, TODO>;
-    fn split_by_size_limit(&mut self, byte_limit: usize) -> Result<Vec<Vec<Self::ByteSize>>, TODO>;
-    fn get_bytes_per_ms(&self) -> u32;
-
-    fn get_frame_size_from_duration(&self, duration: Duration) -> usize {
-        let duration_as_millis = duration.as_millis() as usize;
-
-        let bytes_per_ms = self.get_bytes_per_ms() as usize;
-
-        (duration_as_millis * bytes_per_ms) as usize
-    }
-
-    fn rms<T>(&self, samples: Vec<T>) -> f32
-    where
-        T: num::NumCast + Clone + hound::Sample,
-    {
-        let sum_sq: f32 = samples
-            .iter()
-            .cloned()
-            .map(|s| {
-                let sample: f32 = NumCast::from(s).unwrap();
-                (sample / i16::MAX as f32).powi(2)
-            })
-            .sum();
-        (sum_sq / samples.len() as f32).sqrt()
-    }
-
-    fn dbfs(&self, rms: f32) -> f32 {
-        if rms == 0.0 {
-            -100.0
-        } else {
-            20.0 * rms.log10()
-        }
-    }
+    fn split_audio(&mut self, opts: SplitOpts) -> Result<Vec<AudioChunk<Self::ByteSize>>, Error>;
 }
 
-type TODO = Box<dyn std::error::Error + 'static>;
+pub trait BytesPerMillisecond {
+    fn bytes_per_ms(&self) -> usize;
+}
 
-fn find_silent_position<T, S>(bytes: &[T], splitter: &S) -> Option<usize>
-where
-    T: PartialEq + Copy + num::Num + Default + Sample + NumCast,
-    S: AudioSplitter,
-{
-    let s = splitter.get_frame_size_from_duration(Duration::from_millis(50));
+impl BytesPerMillisecond for WavSpec {
+    fn bytes_per_ms(&self) -> usize {
+        let sample_rate = self.sample_rate as u32;
+        let channels = self.channels as u32;
 
-    for (i, chunk) in bytes.chunks(s).enumerate().rev() {
-        let rms_value = splitter.rms(chunk.to_owned());
-        let db = splitter.dbfs(rms_value);
-
-        if db <= -20.0 {
-            return Some(i * s);
-        }
+        // Calculate bytes per millisecond
+        ((sample_rate * channels) / 1000) as usize
     }
-
-    Some(bytes.len())
 }
