@@ -16,3 +16,4 @@ aiff = ["symphonia/aiff"]
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.19", features = ["fmt"] }
+symphonia = { version = "0.5.4", features = ["aiff"] }

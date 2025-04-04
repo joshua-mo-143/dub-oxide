@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tracing_subscriber::filter::LevelFilter;
 
-use dub_oxide::{AudioSplitter, WavSplitter, formats::aiff::AiffSplitter, opts::SplitOpts};
+use dub_oxide::{AudioSplitter, WavSplitter, opts::SplitOpts};
 
 #[test]
 fn chunking_by_time_works() {
@@ -57,8 +57,10 @@ fn chunking_by_memsize_works() {
     assert_eq!(res.len(), 6);
 }
 
+#[cfg(feature = "aiff")]
 #[test]
 fn aiff_decoding_works() {
+    use crate::formats::aiff::AiffSplitter;
     let mut aiff_splitter = AiffSplitter::from_file_path("../test_files/test.aiff").unwrap();
 
     let opts = SplitOpts::builder()
