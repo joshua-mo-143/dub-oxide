@@ -12,6 +12,7 @@ tracing = { version = "0.1.41", optional = true }
 [features]
 default = []
 tracing = ["dep:tracing"]
+aiff = ["symphonia/aiff"]
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.19", features = ["fmt"] }

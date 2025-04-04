@@ -8,7 +8,7 @@ use symphonia::core::{
 use aiff::{AiffEncoder, AiffHeader};
 
 fn main() {
-    let bytes = std::fs::read("input.wav").unwrap();
+    let bytes = std::fs::read("test_files/test.wav").unwrap();
     let src = Box::new(Cursor::new(bytes));
     let opts = MediaSourceStreamOptions::default();
     let stream = MediaSourceStream::new(src, opts);
@@ -41,5 +41,5 @@ fn main() {
 
     let res = encoder.encode().unwrap();
 
-    std::fs::write("test.aiff", res).unwrap();
+    std::fs::write("test_files/test.aiff", res).unwrap();
 }

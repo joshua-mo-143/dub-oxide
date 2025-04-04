@@ -1,8 +1,10 @@
-use byteorder::LittleEndian;
 use std::io::Write;
 
+pub mod extended;
+
 type TODO = Box<dyn std::error::Error>;
-use byteorder::{BigEndian, WriteBytesExt};
+use byteorder::{BigEndian, LittleEndian, WriteBytesExt};
+use extended::Extended;
 
 #[derive(Debug)]
 pub struct AiffEncoder {
@@ -107,7 +109,7 @@ impl<'a> CommChunk<'a> {
         buffer.write_u32::<BigEndian>(self.num_sample_frames)?;
         buffer.write_u16::<BigEndian>(self.sample_size)?;
 
-        let sample_rate = encode_ieee_754_extended(self.sample_rate);
+        let sample_rate = Extended::from(self.sample_rate * 2.0).to_be_bytes();
 
         buffer.write_all(&sample_rate)?;
 
@@ -161,44 +163,6 @@ impl<'a> SoundChunk<'a> {
     }
 }
 
-/// Creates an 80-bit floating point number (see: Extended type from the Standard Apple Numeric Environment)
-fn encode_ieee_754_extended(value: f64) -> [u8; 10] {
-    let mut result = [0u8; 10];
-
-    if value == 0.0 {
-        return result; // Zero is represented as all zero bytes
-    }
-
-    let sign_bit = if value.is_sign_negative() {
-        0x8000
-    } else {
-        0x0000
-    };
-    let mut v = value.abs();
-    let mut exponent: i16 = 16383; // AIFF exponent bias
-
-    // Normalize the value to the range [0.5, 1.0)
-    while v >= 1.0 {
-        v /= 2.0;
-        exponent += 1;
-    }
-    while v < 0.5 {
-        v *= 2.0;
-        exponent -= 1;
-    }
-
-    // Remove the implicit leading bit
-    let mantissa = (v * (1u64 << 63) as f64) as u64;
-
-    // Store exponent and sign in the first 2 bytes
-    result[0..2].copy_from_slice(&(sign_bit | (exponent as u16)).to_be_bytes());
-
-    // Store mantissa in the remaining 8 bytes
-    result[2..10].copy_from_slice(&mantissa.to_be_bytes());
-
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
@@ -212,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_encoding_works() {
-        let bytes = std::fs::read("input.wav").unwrap();
+        let bytes = std::fs::read("../../test_files/test.wav").unwrap();
         let src = Box::new(Cursor::new(bytes));
         let opts = MediaSourceStreamOptions::default();
         let stream = MediaSourceStream::new(src, opts);
@@ -246,6 +210,6 @@ mod tests {
 
         let res = encoder.encode().unwrap();
 
-        std::fs::write("test.aiff", res).unwrap();
+        std::fs::write("../../test_files/test.aiff", res).unwrap();
     }
 }

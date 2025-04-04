@@ -69,3 +69,6 @@ That's pretty much it.
 - [ ] Marking chunk
 - [ ] Comment chunk
 - [ ] AIFF-C spec
+
+## Credits
+Credits to [depp](https://github.com/depp/extended-rs) for their implementation of FP80 numbers. The code has been copied into this repo for maintainability purposes (and not needing to reference a crate that has never actually been released), but feel free to take a look!

@@ -42,12 +42,17 @@ That's pretty much it.
 ## Supported formats
 
 ### Decoding
-- [x] WAV
+- [x] WAV (fully usable with silence detection)
+- [x] AIFF (usable - no split on silence detection)
 - [ ] Everything else
 
 ### Encoding
-Nothing here yet. :(
+- [x] AIFF (somewhat usable - see `encoders/aiff` crate)
+- [ ] Everything else
 
 ## Roadmap
 - Decode every format supported by `symphonia`
 - (extremely long term) Encode every format
+
+## License
+The entire repo is MIT until I say otherwise. Credits are appreciated if you plan on monetising my work.

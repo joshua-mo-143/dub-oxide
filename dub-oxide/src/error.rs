@@ -2,6 +2,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum Error {
     Hound(hound::Error),
+    Symphonia(symphonia::core::errors::Error),
     IoError(std::io::Error),
     InconsistentByteLength(usize, usize),
     IncompatibleOptions(String, String),
@@ -12,6 +13,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Hound(err) => write!(f, "{err}"),
+            Self::Symphonia(err) => write!(f, "{err}"),
             Self::IoError(err) => write!(f, "{err}"),
             Self::InconsistentByteLength(first, second) => write!(
                 f,
@@ -50,5 +52,11 @@ impl From<hound::Error> for Error {
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Self::IoError(value)
+    }
+}
+
+impl From<symphonia::core::errors::Error> for Error {
+    fn from(value: symphonia::core::errors::Error) -> Self {
+        Self::Symphonia(value)
     }
 }
